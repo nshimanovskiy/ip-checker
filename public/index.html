@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Мой IP — ip.sdsds.top</title>
+<meta name="description" content="Узнать свой IP-адрес и страну">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+  :root {
+    --bg: #f4f6fb; --card: #ffffff; --text: #0f172a; --muted: #64748b;
+    --line: #e2e8f0; --accent: #0284c7; --accent-soft: #e0f2fe; --err: #dc2626;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b1120; --card: #111a2e; --text: #e2e8f0; --muted: #8b9ab3;
+      --line: #1e2a44; --accent: #38bdf8; --accent-soft: #0c2a40; --err: #f87171;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex; align-items: center; justify-content: center; padding: 24px 16px;
+  }
+  main { width: 100%; max-width: 520px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 20px;
+    padding: 28px; box-shadow: 0 10px 30px rgba(15, 23, 42, .06);
+  }
+  .label { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .08em; }
+  .ip-row { display: flex; align-items: center; gap: 12px; margin: 6px 0 20px; flex-wrap: wrap; }
+  #ip {
+    font: 600 clamp(26px, 7vw, 38px)/1.15 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    word-break: break-all;
+  }
+  button {
+    font: inherit; cursor: pointer; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--accent-soft); color: var(--accent); padding: 6px 12px; font-size: 14px;
+  }
+  button:hover { border-color: var(--accent); }
+  .country {
+    display: flex; align-items: center; gap: 14px; padding: 16px;
+    border-radius: 14px; background: var(--accent-soft);
+  }
+  .flag { font-size: 44px; line-height: 1; }
+  .cname { font-size: 22px; font-weight: 600; }
+  .ccode { color: var(--muted); font-size: 14px; }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; margin: 20px 0 0; }
+  dt { color: var(--muted); }
+  dd { margin: 0; text-align: right; word-break: break-word; }
+  form { display: flex; gap: 8px; margin-top: 18px; }
+  input {
+    flex: 1; min-width: 0; font: 15px ui-monospace, Menlo, Consolas, monospace;
+    padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--card); color: var(--text);
+  }
+  input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .err { color: var(--err); margin-top: 14px; min-height: 1.5em; font-size: 14px; }
+  .foot { text-align: center; color: var(--muted); font-size: 13px; margin-top: 16px; }
+  .foot a { color: inherit; }
+  .skeleton { opacity: .45; }
+  #back { display: none; margin-top: 10px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="card">
+    <div class="label" id="ipLabel">Ваш IP-адрес</div>
+    <div class="ip-row">
+      <span id="ip" class="skeleton">…</span>
+      <button id="copy" type="button" hidden>Копировать</button>
+    </div>
+
+    <div class="country">
+      <span class="flag" id="flag">🌐</span>
+      <div>
+        <div class="cname" id="cname">Определяем…</div>
+        <div class="ccode" id="ccode"></div>
+      </div>
+    </div>
+
+    <dl id="details" hidden>
+      <dt>Город</dt><dd id="city">—</dd>
+      <dt>Регион</dt><dd id="region">—</dd>
+      <dt>Провайдер</dt><dd id="org">—</dd>
+      <dt>Часовой пояс</dt><dd id="tz">—</dd>
+    </dl>
+
+    <form id="form" autocomplete="off">
+      <input id="q" placeholder="Проверить другой IP" inputmode="text" spellcheck="false" aria-label="IP-адрес">
+      <button type="submit">Проверить</button>
+    </form>
+    <button id="back" type="button">← Мой IP</button>
+    <div class="err" id="err"></div>
+  </div>
+  <div class="foot">Данные: <a href="https://ipinfo.io" rel="noopener noreferrer" target="_blank">ipinfo.io</a> · <code>curl ip.sdsds.top/raw</code></div>
+</main>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  let names = null;
+  try { names = new Intl.DisplayNames(['ru'], { type: 'region' }); } catch {}
+
+  const flagOf = cc => /^[A-Z]{2}$/.test(cc || '')
+    ? String.fromCodePoint(...[...cc].map(c => 0x1F1E6 + c.charCodeAt(0) - 65))
+    : '🌐';
+
+  const set = (id, v) => { $(id).textContent = v || '—'; };
+
+  async function load(target) {
+    $('err').textContent = '';
+    $('ip').classList.add('skeleton');
+    try {
+      const r = await fetch('/api/ip' + (target ? '?ip=' + encodeURIComponent(target) : ''));
+      const d = await r.json();
+      if (!r.ok) {
+        const msg = { invalid_ip: 'Это не похоже на IP-адрес',
+                      too_many_requests: 'Слишком много запросов, подождите минуту',
+                      lookup_failed: 'ipinfo не ответил, попробуйте позже' }[d.error] || 'Ошибка';
+        $('err').textContent = msg;
+        if (!target) $('ip').textContent = d.ip || '—';
+        return;
+      }
+      $('ipLabel').textContent = d.self ? 'Ваш IP-адрес' : 'IP-адрес';
+      $('ip').textContent = d.ip;
+      $('copy').hidden = false;
+      $('back').style.display = d.self ? 'none' : 'inline-block';
+
+      if (d.bogon) {
+        $('flag').textContent = '🏠';
+        $('cname').textContent = 'Локальный / зарезервированный адрес';
+        $('ccode').textContent = '';
+        $('details').hidden = true;
+        return;
+      }
+      $('flag').textContent = flagOf(d.country);
+      $('cname').textContent = d.country ? ((names && names.of(d.country)) || d.country) : 'Страна неизвестна';
+      $('ccode').textContent = d.country || '';
+      set('city', d.city); set('region', d.region); set('org', d.org); set('tz', d.timezone);
+      $('details').hidden = false;
+      document.title = d.ip + (d.country ? ' · ' + d.country : '') + ' — ip.sdsds.top';
+    } catch {
+      $('err').textContent = 'Нет соединения с сервером';
+    } finally {
+      $('ip').classList.remove('skeleton');
+    }
+  }
+
+  $('copy').onclick = async () => {
+    try {
+      await navigator.clipboard.writeText($('ip').textContent);
+      $('copy').textContent = 'Скопировано';
+      setTimeout(() => $('copy').textContent = 'Копировать', 1500);
+    } catch {}
+  };
+  $('form').onsubmit = e => {
+    e.preventDefault();
+    const v = $('q').value.trim();
+    if (v) load(v);
+  };
+  $('back').onclick = () => { $('q').value = ''; load(); };
+
+  load();
+})();
+</script>
+</body>
+</html>

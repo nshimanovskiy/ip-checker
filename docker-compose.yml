@@ -1,0 +1,11 @@
+services:
+  ip-checker:
+    build: .
+    container_name: ip-checker
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      # Только localhost — снаружи доступ через nginx
+      - "127.0.0.1:3077:3077"
