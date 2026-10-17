@@ -3,7 +3,7 @@
 Сайт **ip.sdsds.top** — показывает ваш IP-адрес и страну (данные ipinfo.io), плюс город, провайдера и часовой пояс. Можно проверить любой другой IP.
 
 - `GET /` — страница
-- Два блока: IPv4 и IPv6 (через поддомены ipv4./ipv6.sdsds.top), отметка какой протокол основной
+- Два блока: IPv4 и IPv6 (через ipify, IPv6 на сервере не нужен), отметка какой протокол основной
 - `GET /api/ip` — JSON о вашем IP, `GET /api/ip?ip=8.8.8.8` — о любом
 - `GET /raw` — только IP текстом: `curl ip.sdsds.top/raw`
 
@@ -21,16 +21,15 @@ sudo sh deploy/update-cloudflare-ips.sh
 sudo cp deploy/nginx-ip.sdsds.top.conf /etc/nginx/sites-available/ip.sdsds.top   # файл из репо
 sudo ln -s /etc/nginx/sites-available/ip.sdsds.top /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
-sudo certbot --nginx -d ip.sdsds.top -d ipv4.sdsds.top -d ipv6.sdsds.top
+sudo certbot --nginx -d ip.sdsds.top
 ```
 
-DNS:
-- `ip.sdsds.top` — A (и AAAA, если есть) → сервер, проксирование Cloudflare можно включить.
-- `ipv4.sdsds.top` — **только A**, серое облако (DNS only).
-- `ipv6.sdsds.top` — **только AAAA**, серое облако (DNS only). Нужен IPv6 на сервере.
+DNS: A-запись `ip.sdsds.top` → сервер, проксирование Cloudflare можно включить.
 
-Поддомены обязаны быть без прокси: Cloudflare сам отдаёт и A, и AAAA и всегда подключается к посетителю
-по его лучшему протоколу, так что разделить v4/v6 через прокси нельзя.
+IPv4 и IPv6 браузер узнаёт через `api.ipify.org` (только IPv4) и `api6.ipify.org` (только IPv6),
+страну — через этот сервер. IPv6 на сервере не нужен. Свои адреса можно задать в `.env`:
+`V4_URL=https://ipv4.sdsds.top/raw.json`, `V6_URL=https://ipv6.sdsds.top/raw.json`
+(поддомены только с A / только с AAAA и без прокси Cloudflare).
 В Cloudflare: SSL/TLS → режим **Full (strict)** (с Flexible будет бесконечный редирект после certbot).
 Если certbot не проходит из-за прокси — временно выключите облако на время выпуска сертификата
 или поставьте Cloudflare Origin Certificate.

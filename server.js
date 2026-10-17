@@ -12,16 +12,19 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_MAX = 5000;
 const RATE_LIMIT = 90; // запросов к API в минуту с одного IP
 
-// Основной домен и два вспомогательных: только A-запись (IPv4) и только AAAA (IPv6)
-const PUBLIC_HOST = process.env.PUBLIC_HOST || 'ip.sdsds.top';
-const V4_HOST = process.env.V4_HOST || 'ipv4.sdsds.top';
-const V6_HOST = process.env.V6_HOST || 'ipv6.sdsds.top';
-const ALLOWED_ORIGINS = new Set([PUBLIC_HOST, V4_HOST, V6_HOST].map(h => `https://${h}`));
+// Отдельные адреса, доступные только по IPv4 и только по IPv6: браузер узнаёт свой IP каждого типа,
+// а страну по нему определяет этот сервер. IPv6 на самом сервере не нужен.
+// Можно указать свои поддомены, например https://ipv6.sdsds.top/raw.json (тогда нужен IPv6 на сервере).
+const V4_URL = process.env.V4_URL || 'https://api.ipify.org?format=json';
+const V6_URL = process.env.V6_URL || 'https://api6.ipify.org?format=json';
+const ALLOWED_ORIGINS = new Set(
+  (process.env.ALLOWED_ORIGINS || 'https://ip.sdsds.top').split(',').map(s => s.trim())
+);
 
 const INDEX_HTML = Buffer.from(
   fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8')
-    .replaceAll('__V4_HOST__', V4_HOST)
-    .replaceAll('__V6_HOST__', V6_HOST)
+    .replaceAll('__V4_URL__', V4_URL)
+    .replaceAll('__V6_URL__', V6_URL)
 );
 const FAVICON = fs.readFileSync(path.join(__dirname, 'public', 'favicon.svg'));
 
@@ -83,7 +86,7 @@ function send(res, status, body, type, extra = {}) {
     'Referrer-Policy': 'no-referrer',
     'X-Frame-Options': 'DENY',
     'Content-Security-Policy':
-      `default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://${V4_HOST} https://${V6_HOST}; base-uri 'none'; form-action 'none'`,
+      `default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ${new URL(V4_URL).origin} ${new URL(V6_URL).origin}; base-uri 'none'; form-action 'none'`,
     'Cache-Control': type.startsWith('application/json') ? 'no-store' : 'public, max-age=300',
   });
   res.end(body);
@@ -119,6 +122,10 @@ const server = http.createServer(async (req, res) => {
   // Только IP — удобно для curl: curl ip.sdsds.top/raw
   if (url.pathname === '/raw') {
     return send(res, 200, ip + '\n', 'text/plain; charset=utf-8');
+  }
+  // Тот же IP в формате ipify — чтобы свои поддомены можно было использовать как V4_URL/V6_URL
+  if (url.pathname === '/raw.json') {
+    return json(res, 200, { ip }, { 'Access-Control-Allow-Origin': '*' });
   }
 
   if (url.pathname === '/api/ip') {
