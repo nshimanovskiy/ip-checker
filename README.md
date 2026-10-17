@@ -15,14 +15,18 @@ sudo mkdir -p /opt/ip-checker && sudo chown $USER /opt/ip-checker
 cd /opt/ip-checker
 echo "IPINFO_TOKEN=ваш_токен" > .env        # токен: https://ipinfo.io/account/token
 
-# nginx
+# nginx (сайт за Cloudflare — сначала список адресов CF)
+sudo sh deploy/update-cloudflare-ips.sh
 sudo cp deploy/nginx-ip.sdsds.top.conf /etc/nginx/sites-available/ip.sdsds.top   # файл из репо
 sudo ln -s /etc/nginx/sites-available/ip.sdsds.top /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 sudo certbot --nginx -d ip.sdsds.top
 ```
 
-DNS: A-запись `ip.sdsds.top` → IP сервера.
+DNS: A-запись `ip.sdsds.top` → IP сервера, проксирование Cloudflare включено (оранжевое облако).
+В Cloudflare: SSL/TLS → режим **Full (strict)** (с Flexible будет бесконечный редирект после certbot).
+Если certbot не проходит из-за прокси — временно выключите облако на время выпуска сертификата
+или поставьте Cloudflare Origin Certificate.
 
 ## Обновление
 
