@@ -10,9 +10,19 @@ const HOST = process.env.HOST || '0.0.0.0';
 const TOKEN = process.env.IPINFO_TOKEN || '';
 const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_MAX = 5000;
-const RATE_LIMIT = 60; // запросов к API в минуту с одного IP
+const RATE_LIMIT = 90; // запросов к API в минуту с одного IP
 
-const INDEX_HTML = fs.readFileSync(path.join(__dirname, 'public', 'index.html'));
+// Основной домен и два вспомогательных: только A-запись (IPv4) и только AAAA (IPv6)
+const PUBLIC_HOST = process.env.PUBLIC_HOST || 'ip.sdsds.top';
+const V4_HOST = process.env.V4_HOST || 'ipv4.sdsds.top';
+const V6_HOST = process.env.V6_HOST || 'ipv6.sdsds.top';
+const ALLOWED_ORIGINS = new Set([PUBLIC_HOST, V4_HOST, V6_HOST].map(h => `https://${h}`));
+
+const INDEX_HTML = Buffer.from(
+  fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8')
+    .replaceAll('__V4_HOST__', V4_HOST)
+    .replaceAll('__V6_HOST__', V6_HOST)
+);
 const FAVICON = fs.readFileSync(path.join(__dirname, 'public', 'favicon.svg'));
 
 const cache = new Map();
@@ -65,21 +75,30 @@ async function lookup(ip) {
   return data;
 }
 
-function send(res, status, body, type) {
+function send(res, status, body, type, extra = {}) {
   res.writeHead(status, {
+    ...extra,
     'Content-Type': type,
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'no-referrer',
     'X-Frame-Options': 'DENY',
     'Content-Security-Policy':
-      "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'",
+      `default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://${V4_HOST} https://${V6_HOST}; base-uri 'none'; form-action 'none'`,
     'Cache-Control': type.startsWith('application/json') ? 'no-store' : 'public, max-age=300',
   });
   res.end(body);
 }
 
-function json(res, status, obj) {
-  send(res, status, JSON.stringify(obj), 'application/json; charset=utf-8');
+function json(res, status, obj, extra) {
+  send(res, status, JSON.stringify(obj), 'application/json; charset=utf-8', extra);
+}
+
+function cors(req) {
+  const origin = req.headers.origin;
+  if (origin && ALLOWED_ORIGINS.has(origin)) {
+    return { 'Access-Control-Allow-Origin': origin, Vary: 'Origin' };
+  }
+  return { Vary: 'Origin' };
 }
 
 const server = http.createServer(async (req, res) => {
@@ -103,19 +122,20 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url.pathname === '/api/ip') {
+    const h = cors(req);
     const n = (hits.get(ip) || 0) + 1;
     hits.set(ip, n);
-    if (n > RATE_LIMIT) return json(res, 429, { error: 'too_many_requests' });
+    if (n > RATE_LIMIT) return json(res, 429, { error: 'too_many_requests' }, h);
 
     const target = (url.searchParams.get('ip') || '').trim() || ip;
-    if (!net.isIP(target)) return json(res, 400, { error: 'invalid_ip' });
+    if (!net.isIP(target)) return json(res, 400, { error: 'invalid_ip' }, h);
 
     try {
       const data = await lookup(target);
-      return json(res, 200, { ...data, self: target === ip });
+      return json(res, 200, { ...data, family: net.isIP(target), self: target === ip }, h);
     } catch (e) {
       console.error('lookup failed', target, e.message);
-      return json(res, 502, { error: 'lookup_failed', ip: target });
+      return json(res, 502, { error: 'lookup_failed', ip: target, family: net.isIP(target) }, h);
     }
   }
 
