@@ -12,29 +12,30 @@ Node 20 без зависимостей, Docker, порт `127.0.0.1:3077` за 
 ## Первая установка на VPS
 
 ```bash
-sudo mkdir -p /opt/ip-checker && sudo chown $USER /opt/ip-checker
-cd /opt/ip-checker
-echo "IPINFO_TOKEN=ваш_токен" > .env        # токен: https://ipinfo.io/account/token
-
-# nginx (сайт за Cloudflare — сначала список адресов CF)
-sudo sh deploy/update-cloudflare-ips.sh
-sudo cp deploy/nginx-ip.sdsds.top.conf /etc/nginx/sites-available/ip.sdsds.top   # файл из репо
-sudo ln -s /etc/nginx/sites-available/ip.sdsds.top /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
-sudo certbot --nginx -d ip.sdsds.top
+unzip ip-checker-main.zip && cd ip-checker-main
+sudo bash deploy/setup-server.sh
 ```
 
-DNS: A-запись `ip.sdsds.top` → сервер, проксирование Cloudflare можно включить.
+Скрипт:
+- создаёт пользователя `gh-ipchecker` для GitHub Actions (без пароля, вход только по ключу, в группе docker),
+  генерирует ему SSH-ключ и в конце печатает готовые значения `SSH_HOST`, `SSH_PORT`, `SSH_USER`, `SSH_KEY`;
+- кладёт приложение в `/opt/ip-checker`, спрашивает токен ipinfo и создаёт `.env`;
+- настраивает nginx (реальный IP посетителя из Cloudflare) и запускает контейнер;
+- по желанию выпускает сертификат certbot.
 
-IPv4 и IPv6 браузер узнаёт через `api.ipify.org` (только IPv4) и `api6.ipify.org` (только IPv6),
-страну — через этот сервер. IPv6 на сервере не нужен. Свои адреса можно задать в `.env`:
-`V4_URL=https://ipv4.sdsds.top/raw.json`, `V6_URL=https://ipv6.sdsds.top/raw.json`
-(поддомены только с A / только с AAAA и без прокси Cloudflare).
-В Cloudflare: SSL/TLS → режим **Full (strict)** (с Flexible будет бесконечный редирект после certbot).
-Если certbot не проходит из-за прокси — временно выключите облако на время выпуска сертификата
-или поставьте Cloudflare Origin Certificate.
+Файрвол, `sshd_config` и другие сайты не трогает. Если в sshd задан `AllowUsers`, предупредит —
+нового пользователя туда нужно добавить вручную. Запускать можно повторно: уже созданное не ломается.
+Имена можно переопределить: `sudo DEPLOY_USER=... DOMAIN=... bash deploy/setup-server.sh`.
+
+DNS: A-запись `ip.sdsds.top` → сервер, проксирование Cloudflare можно включить.
+В Cloudflare: SSL/TLS → **Full (strict)**.
+
+IPv4 и IPv6 посетителя:
+- если у сервера нет IPv6 — через `api.ipify.org` / `api6.ipify.org`;
+- если есть — скрипт предложит свои поддомены: `ipv4.sdsds.top` (только A) и `ipv6.sdsds.top` (только AAAA),
+  обе записи с серым облаком (DNS only).
 
 ## Обновление
 
 GitHub → Actions → **Deploy** → Run workflow. Нужные секреты репозитория:
-`SSH_HOST`, `SSH_PORT`, `SSH_USER`, `SSH_KEY` (пользователь не root, с доступом к docker).
+`SSH_HOST`, `SSH_PORT`, `SSH_USER`, `SSH_KEY` — их печатает `setup-server.sh`.

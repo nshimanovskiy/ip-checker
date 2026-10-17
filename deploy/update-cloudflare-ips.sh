@@ -14,5 +14,5 @@ TMP=$(mktemp)
 grep -q set_real_ip_from "$TMP" || { echo "Не удалось получить список Cloudflare"; rm -f "$TMP"; exit 1; }
 mkdir -p /etc/nginx/snippets
 mv "$TMP" "$OUT" && chmod 644 "$OUT"
-nginx -t && systemctl reload nginx
+[ "${NO_RELOAD:-}" = 1 ] || { nginx -t && systemctl reload nginx; }
 echo "OK: $OUT"
